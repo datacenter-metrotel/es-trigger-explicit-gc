@@ -1,0 +1,21 @@
+apiVersion: v1
+data:
+  boot.sh: |-
+    !/bin/bash
+    cp -f /es-trigger-explicit-gc-v2.sh  /apps/es-trigger-explicit-gc-v2.sh
+    /apps/es-trigger-explicit-gc-v2.sh
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2023-03-15T18:06:13Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:boot.sh: {}
+    manager: agent
+    operation: Update
+    time: "2023-03-15T18:06:13Z"
+  name: boot
+  namespace: nokia-fix
