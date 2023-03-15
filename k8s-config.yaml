@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-config
+  annotations:
+    {}
+#    key: string
+  creationTimestamp: '2023-03-15T17:30:30Z'
+  labels:
+    {}
+#    key: string
+  namespace: nokia-fix
+  fields:
+    - k8s-config
+    - 62m
+data:
+  config: |-
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - name: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+      cluster:
+        server: "https://infra-k8s.metrotel.xdc/k8s/clusters/c-hsgnz"
+        certificate-authority-data: ""
+    - name: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva-mtl-xdc-k8s-c004-mgr-01"
+      cluster:
+        server: "https://172.18.208.18:6443"
+        certificate-authority-data: ""
+  
+    users:
+    - name: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+      user:
+        token: ""
+  
+  
+    contexts:
+    - name: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+      context:
+        user: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+        cluster: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+    - name: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva-mtl-xdc-k8s-c004-mgr-01"
+      context:
+        user: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+        cluster: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva-mtl-xdc-k8s-c004-mgr-01"
+  
+    current-context: "mtl-xdc-k8s-c004-nk-alt-ac-isam-sva"
+#  key: string
+__clone: true
+#binaryData:
+#  key: string
+#immutable: boolean
