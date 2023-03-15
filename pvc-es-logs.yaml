@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    pv.kubernetes.io/bind-completed: "yes"
+    pv.kubernetes.io/bound-by-controller: "yes"
+    volume.beta.kubernetes.io/storage-provisioner: driver.longhorn.io
+  creationTimestamp: "2023-03-15T17:48:08Z"
+  finalizers:
+  - kubernetes.io/pvc-protection
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:spec:
+        f:accessModes: {}
+        f:resources:
+          f:requests:
+            .: {}
+            f:storage: {}
+        f:storageClassName: {}
+        f:volumeMode: {}
+    manager: agent
+    operation: Update
+    time: "2023-03-15T17:48:08Z"
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .: {}
+          f:pv.kubernetes.io/bind-completed: {}
+          f:pv.kubernetes.io/bound-by-controller: {}
+          f:volume.beta.kubernetes.io/storage-provisioner: {}
+      f:spec:
+        f:volumeName: {}
+      f:status:
+        f:accessModes: {}
+        f:capacity:
+          .: {}
+          f:storage: {}
+        f:phase: {}
+    manager: kube-controller-manager
+    operation: Update
+    time: "2023-03-15T17:48:10Z"
+  name: es-logs
+  namespace: nokia-fix
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+  volumeMode: Filesystem
+  volumeName: pvc-8f4e2b26-979f-48ee-9e2d-755308b1d2d3
+status:
+  accessModes:
+  - ReadWriteMany
+  capacity:
+    storage: 10Gi
+  phase: Bound
