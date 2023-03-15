@@ -1,0 +1,105 @@
+apiVersion: v1
+data:
+  es-trigger-explicit-gc-v2.sh: "#!/bin/bash\n##\n# THIS SCRIPT PERIODICALLY(EVERY
+    10s) MONITORS ELASTICSEARCH/OPENSEARCH NODES MEMORY TREND AND TRIGGERS FULL GC
+    UPON REACHING THE CONFIGURED THRESHOLD [DEFAULT : 80%]\n# THIS IS TO AVOID \"DATA
+    TOO LARGE\" ISSUE IN OLDER ES RELEASE [7.8.0] \n# - https://discuss.elastic.co/t/g1gc-cause-circuitbreakingexception-parent-data-too-large-on-7-1-1/187272/30\n#
+    - https://github.com/elastic/elasticsearch/pull/46169\n# \n# INSTALLATION STEP
+    : \n#   1. Copy the file es_trigger_explicit_gc.sh to kubernetes master/helper
+    under the location which has executable persmission\n#   2. run this as background
+    operation,\n#          nohup bash es_trigger_explicit_gc.sh &\n#   3. watch es_trigger_gc.log
+    for the updates\n#\n# CURRENTLY SCRIPT WILL MONITOR ONLY THE CLIENT NODES. TO
+    ENABLE DATA NODE MONITORING, NEED TO UNCOMMENT THE LINES #getDataMem & #check_data
+    UNDER THE main() FUNCTION\n##\n\n\n#gc trigger configuration\nTHRESHOLD=80\nFORCE_RUN_THRESHOLD=90
+    #trigger full gc immediately if this threshold is crossed\nMAX_ITERATION=3\nTHRESHOLD_CHECK_INTERVAL=10\n\n#logging
+    configuration\nMAX_LOG_SIZE=\"10485760\" #10MB\nLOGNAME=\"es_trigger_gc.log\"\nDEBUG=true\n\n#application=OpenSearch\napplication=Elasticsearch\nnamespace=nokia\n\nGC_HEADER=\"S0C
+    S1C S0U S1U EC EU OC OU MC MU CCSC CCSU YGC YGCT FGC FGCT CGC CGCT GCT\"\n\nlog()\n{\n
+    \  rotateLogFile\n   echo -e \"`date` [INFO] $@\" >> $LOGNAME\n}\n\nlogdebug()\n{\n
+    \  rotateLogFile\n   echo -e \"`date` [DEBUG] $@\" >> $LOGNAME\n}\n\nrotateLogFile()\n{\n
+    \  log_size=$(ls -l $LOGNAME | tr -s \" \" | cut -d\" \" -f5)\n   if [ $log_size
+    -gt $MAX_LOG_SIZE ]; then      \n      rm $LOGNAME\n\t  echo \"`date` [DEBUG]
+    $LOGNAME exceeds max size $MAX_LOG_SIZE\"\n   fi\n}\n\n\ngetDataMem()\n{\n    namespace=$1\n
+    \   first_data_node=`kubectl get pod -n $namespace | grep \"elasticsearch-data\"
+    | head -1 | awk '{print $1}' 2>/dev/null`\n    xmx_datanode_string=`kubectl exec
+    -i $first_data_node -n $namespace -- jps -lv | grep $application | sed -e 's/.*Xmx/
+    /g'  | awk '{print $1}'`\n\n\tif [[ \"$xmx_datanode_string\" =~ .*\"g\" ]]; then\n\t
+    \ xmx_data_in_kb=$(( `echo $xmx_datanode_string | sed -e 's/g//g'`*1024*1024 ));\n\telif
+    [[ \"$xmx_datanode_string\" =~ .*\"m\" ]]; then\n\t  xmx_data_in_kb=$(( `echo
+    $xmx_datanode_string | sed -e 's/m//g'`*1024 ))\n\tfi\n\n\techo \"$namespace=$xmx_data_in_kb\"
+    >> datamem.properties\n\tlog \"[$namespace] Xmx setting in data node is $xmx_data_in_kb
+    kb \" \n}\n\n\ngetClientMem()\n{\n    namespace=$1\n    first_client_node=`kubectl
+    get pod -n $namespace | grep \"elasticsearch-client\" | head -1 | awk '{print
+    $1}' 2>/dev/null` \n\txmx_clientnode_string=`kubectl exec -i $first_client_node
+    -n $namespace -- jps -lv | grep $application | sed -e 's/.*Xmx/ /g'  | awk '{print
+    $1}'`\n\tpid=`kubectl exec -i $first_client_node -n $namespace -- jps -lv | grep
+    $application | awk '{print $1}'`;\n\n\tif [[ \"$xmx_clientnode_string\" =~ .*\"g\"
+    ]]; then\n\t  xmx_client_in_kb=$(( `echo $xmx_clientnode_string | sed -e 's/g//g'`*1024*1024
+    ));\n\telif [[ \"$xmx_clientnode_string\" =~ .*\"m\" ]]; then\n\t  xmx_client_in_kb=$((
+    `echo $xmx_clientnode_string | sed -e 's/m//g'`*1024 ))\n\tfi\n\t\n\techo \"$namespace=$xmx_client_in_kb\"
+    >> clientmem.properties\n\tlog \"[$namespace] Xmx setting in client node is $xmx_client_in_kb
+    kb \"\n}\n\n# Iterate over client nodes and do the mem threshold check\ncheck_client()\n{\n
+    \   namespace=$1\n    pids=\"\"\n    client_array=( $(kubectl get pod -n $namespace
+    | grep elasticsearch-client | awk '{print $1}' 2>/dev/null) )\n\tfor clientnode
+    in \"${client_array[@]}\"\n\tdo\n\t\ttrigger_fullgc $clientnode `cat clientmem.properties
+    | grep $namespace | cut -f2 -d\"=\"` $namespace & \n\t\tpids=\"$pids $!\"\n\tdone\n\t\n\twait
+    $pids\n}\n\n# Iterate over data nodes and do the mem threshold check\ncheck_data()\n{\n
+    \   namespace=$1\n    pids=\"\"\n    data_array=( $(kubectl get pod -n $namespace
+    | grep elasticsearch-data | awk '{print $1}' 2>/dev/null) )\n\tfor datanode in
+    \"${data_array[@]}\"\n\tdo\n\t\ttrigger_fullgc $datanode `cat datamem.properties
+    | grep $namespace | cut -f2 -d\"=\"` $namespace &\n\t\tpids=\"$pids $!\"\n\tdone\n\t\n\twait
+    $pids\n}\n\n# this will take client or data node's pod name and run the monitor
+    based on THRESHOLD, MAX_ITERATION, THRESHOLD_CHECK_INTERVAL, \ntrigger_fullgc()
+    \n{\n    node_to_access=$1\n\txmx_in_kb=$2\n\tnamespace=$3\n\tintialcount=0\t\n\tpid=`kubectl
+    exec -i $node_to_access -n $namespace -- jps -lv | grep $application | awk '{print
+    $1}' 2>/dev/null`\n\theap_used_in_kb=`kubectl exec -i $node_to_access -n $namespace
+    -- jstat -gc $pid | tail -n 1 | awk '{OFMT=\"%f\";split($0,a,\" \"); sum1=a[3]+a[4]+a[6]+a[8];
+    printf \"%0.0f\\n\",sum1}' 2>/dev/null`\n\tpercentage_usage=$(( $heap_used_in_kb*100/$xmx_in_kb
+    ))\n\tcondition_to_cont=true\n    while $condition_to_cont; \n\tdo\t\n\t\tif [
+    $percentage_usage -gt $THRESHOLD ]; then\n\t\t\t  log \"[$namespace:$node_to_access]
+    $intialcount : $heap_used_in_kb/$xmx_in_kb = $percentage_usage % Is greater than
+    $THRESHOLD\" \n\t\t\t  intialcount=`expr $intialcount + 1`\n\t\telif [ $intialcount
+    -lt $MAX_ITERATION ]; then\n\t\t\t  # exit \n\t\t\t  intialcount=0\n\t\tfi\n\t\t\n\t\tif
+    [ $intialcount -eq $MAX_ITERATION ] || [ $percentage_usage -gt $FORCE_RUN_THRESHOLD
+    ]; then        \n\t\t\t  log \"[$namespace:$node_to_access] $GC_HEADER\"\n\t\t\t
+    \ log \"[$namespace:$node_to_access]\" `kubectl exec -i $node_to_access -n $namespace
+    -- jstat -gc $pid | tail -n 1`\n\t\t\t  kubectl exec -i $node_to_access -n $namespace
+    -- jcmd $pid GC.run &>/dev/null\n\t\t\t  log \"[$namespace:$node_to_access] Initiated
+    Full GC...\"\n\t\t\t  \n\t\t\t  heap_used_in_kb_after=$( kubectl exec -i $node_to_access
+    -n $namespace -- jstat -gc $pid | tail -n 1 | awk '{OFMT=\"%f\";split($0,a,\"
+    \"); sum1=a[3]+a[4]+a[6]+a[8]; printf \"%0.0f\\n\",sum1}' 2>/dev/null ) \n\t\t\t
+    \ percentage_usage_after=$(( $heap_used_in_kb_after*100/$xmx_in_kb ))\n\t\t\t
+    \ \n\t\t\t  log \"[$namespace:$node_to_access] $GC_HEADER\"\n\t\t\t  log \"[$namespace:$node_to_access]\"
+    `kubectl exec -i $node_to_access -n $namespace -- jstat -gc $pid | tail -n 1`\n\t\t\t
+    \ log \"[$namespace:$node_to_access] Mem Used Size (in KB) : $heap_used_in_kb.
+    After Full GC (triggered via jcmd) Mem Used Size (in KB) : $heap_used_in_kb_after\"\n\t\t\t
+    \ log \"[$namespace:$node_to_access] Mem Used % : $percentage_usage. After Full
+    GC (triggered via jcmd) Mem Used % : $percentage_usage_after\"\n\t\t\t  # exit\n\t\t\t
+    \ intialcount=0;\t\t  \n\t\t  fi\n\t\t  \n\t\t  if [ $intialcount -eq 0 ]; then
+    \n\t\t      if $DEBUG; then\n\t\t\t    if [ $percentage_usage -lt $THRESHOLD ];
+    then\n                  logdebug \"[$namespace:$node_to_access] $intialcount :
+    $heap_used_in_kb/$xmx_in_kb = $percentage_usage%  Is not greater than $THRESHOLD%\"\n\t\t\t\tfi\n
+    \             fi\n\t\t      #this condition means % usage is less than the threshold
+    hence exit.\n\t\t      condition_to_cont=false\t\t \n\t\t  else\n              sleep
+    $THRESHOLD_CHECK_INTERVAL\t\t  \n\t\t  fi\n\t  done\n}\n\nstartMonitor() {    \n\tcheck_client
+    $1\n\t#check_data $1\t\n}\n\nmain() {  \n    # clean up\n    > clientmem.properties\t\n
+    \   #> datamem.properties\n\t\n    echo \"Started Monitoring. Watch $LOGNAME...\"\n
+    \   log \"Started Monitoring...\"    \n\t\n\tns_array=( $(kubectl get pods --all-namespaces
+    | grep elasticsearch | awk '{print $1}' | uniq 2>/dev/null) )\n\t\n\tfor ns in
+    \"${ns_array[@]}\"\n\tdo\n\t\tgetClientMem $ns\n\t\t#getDataMem $ns\n\tdone\n
+    \   \n\twhile true;\n\tdo\t    \n\t\tfor ns in \"${ns_array[@]}\"\n\t\tdo\n\t\t\tstartMonitor
+    $ns\t\t\t\t\t\n\t\tdone\t\t\n\t\tsleep 10\n\tdone\t\n}\n\nmain"
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2023-03-15T17:35:18Z"
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:data:
+        .: {}
+        f:es-trigger-explicit-gc-v2.sh: {}
+    manager: agent
+    operation: Update
+    time: "2023-03-15T17:35:18Z"
+  name: es-trigger-explicit-gc-v2.sh
+  namespace: nokia-fix
